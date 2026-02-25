@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pookie AI - Your Emotional BFF</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --bg-dark: #090909;
+            --chat-bg: #121212;
+            --user-bubble: #ff4d94;
+            --ai-bubble: #1e1e1e;
+            --text-main: #ffffff;
+            --accent: #ff007f;
+        }
+
+        body, html {
+            margin: 0; padding: 0;
+            background-color: var(--bg-dark);
+            font-family: 'Segoe UI', sans-serif;
+            color: var(--text-main);
+            height: 100%;
+            display: flex;
+            justify-content: center;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 500px;
+            background-color: var(--chat-bg);
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 0 30px rgba(255, 0, 127, 0.1);
+        }
+
+        /* Avatar & Header */
+        header {
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            border-bottom: 1px solid #222;
+            background: linear-gradient(to bottom, #1a1a1a, #121212);
+        }
+
+        .avatar-container {
+            position: relative;
+            width: 90px;
+            height: 90px;
+            margin-bottom: 10px;
+        }
+
+        #pookie-avatar {
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            border: 3px solid var(--accent);
+            object-fit: cover;
+            transition: transform 0.3s ease;
+        }
+
+        .emotion-badge {
+            position: absolute;
+            bottom: 0;
+            right: 0;
+            background: var(--accent);
+            border-radius: 50%;
+            width: 28px;
+            height: 28px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            border: 2px solid var(--chat-bg);
+        }
+
+        .name { font-weight: bold; font-size: 1.2rem; color: var(--accent); }
+
+        /* Chat Window */
+        #chat-window {
+            flex: 1;
+            padding: 15px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            scrollbar-width: none;
+        }
+
+        .msg {
+            max-width: 80%;
+            padding: 12px 16px;
+            border-radius: 20px;
+            font-size: 0.95rem;
+            animation: fadeIn 0.3s ease;
+        }
+
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+        .user-msg {
+            align-self: flex-end;
+            background: linear-gradient(45deg, #ff4d94, #ff007f);
+            color: white;
+            border-bottom-right-radius: 2px;
+        }
+
+        .ai-msg {
+            align-self: flex-start;
+            background-color: var(--ai-bubble);
+            color: #eee;
+            border-bottom-left-radius: 2px;
+            border: 1px solid #333;
+        }
+
+        .typing { display: none; font-size: 0.8rem; color: var(--accent); padding: 5px 15px; }
+
+        /* Input Area */
+        footer {
+            padding: 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: #000;
+        }
+
+        #user-input {
+            flex: 1;
+            background: #222;
+            border: 1px solid #444;
+            padding: 12px 18px;
+            border-radius: 25px;
+            color: white;
+            outline: none;
+        }
+
+        .icon-btn {
+            background: none; border: none;
+            color: var(--accent);
+            font-size: 1.4rem; cursor: pointer;
+            transition: 0.2s;
+        }
+
+        .icon-btn:hover { transform: scale(1.1); }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <header>
+        <div class="avatar-container">
+            <img id="pookie-avatar" src="https://i.pinimg.com/originals/a9/d4/73/a9d473200787e97f00f07421375d8650.jpg" alt="Pookie">
+            <div class="emotion-badge" id="emoji-badge">😊</div>
+        </div>
+        <div class="name">Pookie</div>
+        <div style="font-size: 0.7rem; color: #666;">Emotion-Aware AI</div>
+    </header>
+
+    <div id="chat-window"></div>
+    <div class="typing" id="typing-box">Pookie is feeling your words...</div>
+
+    <footer>
+        <button class="icon-btn" onclick="clearMemory()"><i class="fas fa-undo"></i></button>
+        <button class="icon-btn" onclick="startVoice()"><i class="fas fa-microphone"></i></button>
+        <input type="text" id="user-input" placeholder="Say something sweet..." autocomplete="off">
+        <button class="icon-btn" onclick="sendMsg()"><i class="fas fa-heart"></i></button>
+    </footer>
+</div>
+
+<script>
+    const API_KEY = "sk-d7cebbf766d04898a490023253776965";
+    const API_URL = "https://api.deepseek.com/chat/completions";
+    
+    let userName = localStorage.getItem('pookie_user') || prompt("What should I call you, cutie?") || "Babe";
+    localStorage.setItem('pookie_user', userName);
+
+    let history = JSON.parse(localStorage.getItem('pookie_chat_logs')) || [];
+
+    const chatWindow = document.getElementById('chat-window');
+    const userInput = document.getElementById('user-input');
+    const typingBox = document.getElementById('typing-box');
+    const avatar = document.getElementById('pookie-avatar');
+    const emojiBadge = document.getElementById('emoji-badge');
+
+    // Emotion & Avatar Logic
+    const emotions = {
+        happy: { emoji: "😊", scale: "1.1", filter: "none" },
+        sad: { emoji: "🥺", scale: "0.95", filter: "grayscale(0.5)" },
+        angry: { emoji: "😤", scale: "1.05", filter: "sepia(0.3) hue-rotate(-50deg)" },
+        love: { emoji: "🥰", scale: "1.2", filter: "drop-shadow(0 0 5px #ff007f)" },
+        surprised: { emoji: "😯", scale: "1.1", filter: "brightness(1.2)" }
+    };
+
+    function updatePookieEmotion(text) {
+        const lowerText = text.toLowerCase();
+        let selected = emotions.happy;
+
+        if(lowerText.match(/(sad|cry|hurt|lonely|sorry|খারাপ|কষ্ট)/)) selected = emotions.sad;
+        if(lowerText.match(/(love|heart|sweet|cute|pookie|ভালোবাসি|প্রিয়)/)) selected = emotions.love;
+        if(lowerText.match(/(angry|mad|stop|hate|রাগ)/)) selected = emotions.angry;
+        if(lowerText.match(/(wow|omg|really|অবাক)/)) selected = emotions.surprised;
+
+        emojiBadge.innerText = selected.emoji;
+        avatar.style.transform = `scale(${selected.scale})`;
+        avatar.style.filter = selected.filter;
+    }
+
+    // Chat Logic
+    window.onload = () => {
+        if(history.length === 0) {
+            addMessage('ai', `Hey ${userName}! I'm Pookie, your new bestie. Talk to me! 🌸`);
+        } else {
+            history.forEach(m => addMessage(m.role === 'user' ? 'user' : 'ai', m.content, false));
+        }
+    };
+
+    function addMessage(sender, text, save = true) {
+        const div = document.createElement('div');
+        div.className = `msg ${sender === 'user' ? 'user-msg' : 'ai-msg'}`;
+        div.innerText = text;
+        chatWindow.appendChild(div);
+        chatWindow.scrollTop = chatWindow.scrollHeight;
+        if(save) {
+            history.push({role: sender === 'user' ? 'user' : 'assistant', content: text});
+            localStorage.setItem('pookie_chat_logs', JSON.stringify(history.slice(-20)));
+        }
+    }
+
+    async function sendMsg() {
+        const text = userInput.value.trim();
+        if(!text) return;
+
+        updatePookieEmotion(text); // Emotion detection on input
+        addMessage('user', text);
+        userInput.value = '';
+        typingBox.style.display = 'block';
+
+        try {
+            const response = await fetch(API_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${API_KEY}` },
+                body: JSON.stringify({
+                    model: "deepseek-chat",
+                    messages: [
+                        {role: "system", content: `You are Pookie, a sweet and emotional female friend. Use emojis. Current user: ${userName}. Always be supportive and a bit flirty/cute.`},
+                        ...history
+                    ]
+                })
+            });
+
+            const data = await response.json();
+            const aiText = data.choices[0].message.content;
+            
+            typingBox.style.display = 'none';
+            updatePookieEmotion(aiText); // Emotion detection on AI response
+            addMessage('ai', aiText);
+            speak(aiText);
+
+        } catch (e) {
+            typingBox.style.display = 'none';
+            addMessage('ai', "My heart skipped a beat (API Error). Try again?");
+        }
+    }
+
+    function speak(text) {
+        const speech = new SpeechSynthesisUtterance(text.replace(/[^\w\s\u0980-\u09FF]/gi, ''));
+        speech.pitch = 1.4;
+        speech.rate = 1.0;
+        window.speechSynthesis.speak(speech);
+    }
+
+    function startVoice() {
+        const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+        recognition.start();
+        recognition.onresult = (e) => { userInput.value = e.results[0][0].transcript; sendMsg(); };
+    }
+
+    function clearMemory() {
+        if(confirm("Wipe our memories? 🥺")) {
+            localStorage.clear();
+            location.reload();
+        }
+    }
+
+    userInput.addEventListener("keypress", (e) => { if(e.key === "Enter") sendMsg(); });
+</script>
+</body>
+</html>
